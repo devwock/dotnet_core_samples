@@ -1,5 +1,6 @@
 ﻿using IWshRuntimeLibrary;
 using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
@@ -8,6 +9,26 @@ namespace ShortcutMaker
 {
     public class ShortcutMaker
     {
+        public static void CreateShortcutByClsid(string shortcutPath, string targetPath, string iconFilePath)
+        {
+            Type type = Type.GetTypeFromCLSID(new Guid("72C24DD5-D70A-438B-8A42-98424B88AFB8"));
+            object shell = null;
+            object lnk = null;
+            try
+            {
+                shell = Activator.CreateInstance(type);
+                lnk = type.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { shortcutPath });
+                type.InvokeMember("TargetPath", BindingFlags.SetProperty, null, lnk, new object[] { targetPath });
+                type.InvokeMember("IconLocation", BindingFlags.SetProperty, null, lnk, new object[] { iconFilePath });
+                type.InvokeMember("Save", BindingFlags.InvokeMethod, null, lnk, null);
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(lnk);
+                Marshal.FinalReleaseComObject(shell);
+            }
+        }
+
         public static void CreateShortcutByWsh(string shortcutPath, string targetPath, string iconPath, string description = null)
         {
             WshShell shell = new WshShell();

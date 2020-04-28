@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace ShortcutMaker
+﻿namespace ShortcutMaker
 {
     public class Program
     {
@@ -8,6 +6,7 @@ namespace ShortcutMaker
         {
             ShortcutMaker.CreateShortcutByCom(@"notepad.lnk", @"C:\Windows\System32\notepad.exe", "shell32.dll, 5");
             ShortcutMaker.CreateShortcutByWsh(@"notepad.lnk", @"C:\Windows\System32\notepad.exe", "shell32.dll, 5");
+            ShortcutMaker.CreateShortcutByClsid(@"notepad.lnk", @"C:\Windows\System32\notepad.exe", "shell32.dll, 5");
         }
     }
 }
