@@ -12,6 +12,14 @@ namespace ShortcutMaker
         public static void CreateShortcutByClsid(string shortcutPath, string targetPath, string iconFilePath)
         {
             Type type = Type.GetTypeFromCLSID(new Guid("72C24DD5-D70A-438B-8A42-98424B88AFB8"));
+
+            // NOT WORK! shell maybe null
+            // dynamic shell = Activator.CreateInstance(type);
+            // var lnk = shell.CreateShortcut(destination);
+            // lnk.TargetPath = filePath;
+            // lnk.IconLocation = iconFilePath;
+            // lnk.Save();
+
             object shell = null;
             object lnk = null;
             try
@@ -25,6 +33,30 @@ namespace ShortcutMaker
             finally
             {
                 Marshal.FinalReleaseComObject(lnk);
+                Marshal.FinalReleaseComObject(shell);
+            }
+        }
+
+        public static void CreateShortcut(string filePath, string destination, string iconFilePath)
+        {
+            Type type = Type.GetTypeFromCLSID(new Guid("72C24DD5-D70A-438B-8A42-98424B88AFB8"));
+            dynamic shell = Activator.CreateInstance(type);
+            try
+            {
+                var lnk = shell.CreateShortcut(destination);
+                try
+                {
+                    lnk.TargetPath = filePath;
+                    lnk.IconLocation = iconFilePath;
+                    lnk.Save();
+                }
+                finally
+                {
+                    Marshal.FinalReleaseComObject(lnk);
+                }
+            }
+            finally
+            {
                 Marshal.FinalReleaseComObject(shell);
             }
         }
