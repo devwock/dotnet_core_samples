@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace NetworkUtil
+﻿namespace NetworkUtil
 {
     public class Program
     {
