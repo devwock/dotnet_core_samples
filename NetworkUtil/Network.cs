@@ -12,20 +12,6 @@ namespace NetworkUtil
 {
     public class Network
     {
-        public void SetIpAddress(string mac, string ipAddress, string subnetMask)
-        {
-            ManagementObject managementObject = GetManagementObject(mac);
-            if (managementObject == null)
-            {
-                return;
-            }
-
-            ManagementBaseObject newIP = managementObject.GetMethodParameters("EnableStatic");
-            newIP["IPAddress"] = new string[] { ipAddress };
-            newIP["SubnetMask"] = new string[] { subnetMask };
-            managementObject.InvokeMethod("EnableStatic", newIP, null);
-        }
-
         private ManagementObject GetManagementObject(string mac)
         {
             ManagementClass managementClass = new ManagementClass("Win32_NetworkAdapterConfiguration");
@@ -43,49 +29,76 @@ namespace NetworkUtil
             return null;
         }
 
-        public void SetGateway(string mac, string gateway)
+        public Dictionary<string, string> GetActiveNetwork()
         {
-            ManagementObject managementObject = GetManagementObject(mac);
-            if (managementObject == null)
+            NetworkInterface[] networkInterfaces = NetworkInterface.GetAllNetworkInterfaces();
+            Dictionary<string, string> nicInfo = new Dictionary<string, string>();
+            foreach (NetworkInterface networkInterface in networkInterfaces)
             {
-                return;
-            }
+                if (networkInterface.OperationalStatus != OperationalStatus.Up || networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                {
+                    continue;
+                }
 
-            ManagementBaseObject newGateway = managementObject.GetMethodParameters("SetGateways");
-            newGateway["DefaultIPGateway"] = new string[] { gateway };
-            newGateway["GatewayCostMetric"] = new int[] { 1 };
-            managementObject.InvokeMethod("SetGateways", newGateway, null);
-        }
-
-        public void SetDns(string mac, string dns)
-        {
-            ManagementObject managementObject = GetManagementObject(mac);
-            if (managementObject == null)
-            {
-                return;
-            }
-
-            ManagementBaseObject newDns = managementObject.GetMethodParameters("SetDNSServerSearchOrder");
-            newDns["DNSServerSearchOrder"] = dns.Split(',');
-            managementObject.InvokeMethod("SetDNSServerSearchOrder", newDns, null);
-        }
-
-        public string GetMacAddressByManagementObject()
-        {
-            ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_NetworkAdapterConfiguration where IPEnabled=true");
-            IEnumerable<ManagementObject> adapters = searcher.Get().Cast<ManagementObject>();
-            foreach (var adapter in adapters)
-            {
-                return adapter["MACAddress"].ToString();
+                if (!string.IsNullOrEmpty(GetGatewayAddress(networkInterface)))
+                {
+                    nicInfo.Add("Name", networkInterface.Name);
+                    nicInfo.Add("Description", networkInterface.Description);
+                    nicInfo.Add("Speed", GetNicSpeed(networkInterface));
+                    nicInfo.Add("Mac", string.Join(":", StringUtil.SplitString(networkInterface.GetPhysicalAddress().ToString(), 2)));
+                    nicInfo.Add("IPAddress", GetIpAddress(networkInterface));
+                    nicInfo.Add("SubnetMask", GetSubnetMask(networkInterface));
+                    nicInfo.Add("Gateway", GetGatewayAddress(networkInterface));
+                    nicInfo.Add("Dns", GetDnsAddress(networkInterface));
+                    return nicInfo;
+                }
             }
             return null;
         }
 
-        public void SetNetwork(string mac, string ipAddress, string subnetMask, string gateway, string dns)
+        public string GetDnsAddress(NetworkInterface networkInterface)
         {
-            SetIpAddress(mac, ipAddress, subnetMask);
-            SetGateway(mac, gateway);
-            SetDns(mac, dns);
+            foreach (IPAddress dnsAddress in networkInterface.GetIPProperties().DnsAddresses)
+            {
+                if (dnsAddress.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    return dnsAddress.ToString();
+                }
+            }
+            return null;
+        }
+
+        public string GetGatewayAddress(NetworkInterface networkInterface)
+        {
+            foreach (GatewayIPAddressInformation gatewayAddress in networkInterface.GetIPProperties().GatewayAddresses)
+            {
+                return gatewayAddress.Address.ToString();
+            }
+            return null;
+        }
+
+        public string GetIpAddress(NetworkInterface networkInterface)
+        {
+            foreach (UnicastIPAddressInformation ipAddressInformation in networkInterface.GetIPProperties().UnicastAddresses)
+            {
+                if (ipAddressInformation.Address.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    return ipAddressInformation.Address.ToString();
+                }
+            }
+            return null;
+        }
+
+        public string GetSubnetMask(NetworkInterface networkInterface)
+        {
+            foreach (UnicastIPAddressInformation ipAddressInformation in networkInterface.GetIPProperties().UnicastAddresses)
+            {
+                if (ipAddressInformation.Address.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    return ipAddressInformation.IPv4Mask.ToString();
+                }
+            }
+            return null;
         }
 
         public string GetNicSpeed(NetworkInterface networkInterface)
@@ -118,54 +131,6 @@ namespace NetworkUtil
             return stringSpeed;
         }
 
-        public Dictionary<string, string> GetActiveNetwork()
-        {
-            NetworkInterface[] networkInterfaces = NetworkInterface.GetAllNetworkInterfaces();
-            Dictionary<string, string> nicInfo = new Dictionary<string, string>();
-            foreach (NetworkInterface networkInterface in networkInterfaces)
-            {
-                if (networkInterface.OperationalStatus != OperationalStatus.Up || networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback)
-                {
-                    continue;
-                }
-
-                if (!string.IsNullOrEmpty(GetGatewayAddress(networkInterface)))
-                {
-                    nicInfo.Add("Name", networkInterface.Name);
-                    nicInfo.Add("Description", networkInterface.Description);
-                    nicInfo.Add("Speed", GetNicSpeed(networkInterface));
-                    nicInfo.Add("Mac", string.Join(":", StringUtil.SplitString(networkInterface.GetPhysicalAddress().ToString(), 2)));
-                    nicInfo.Add("IPAddress", GetIpAddress(networkInterface));
-                    nicInfo.Add("SubnetMask", GetSubnetMask(networkInterface));
-                    nicInfo.Add("Gateway", GetGatewayAddress(networkInterface));
-                    nicInfo.Add("Dns", GetDnsAddress(networkInterface));
-                    return nicInfo;
-                }
-            }
-            return null;
-        }
-
-        public string GetMacAddressBySpeed()
-        {
-            const int MIN_MAC_ADDR_LENGTH = 12;
-            long maxSpeed = -1;
-
-            foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
-                {
-                    continue;
-                }
-
-                string macAddress = nic.GetPhysicalAddress().ToString();
-                if (nic.Speed > maxSpeed && !string.IsNullOrEmpty(macAddress) && macAddress.Length >= MIN_MAC_ADDR_LENGTH)
-                {
-                    return StringUtil.SplitInParts(macAddress, ":", 2);
-                }
-            }
-            return null;
-        }
-
         [DllImport("iphlpapi.dll", ExactSpelling = true)]
         private static extern int SendARP(int DestIP, int SrcIP, byte[] pMacAddr, ref uint PhyAddrLen);
 
@@ -193,6 +158,38 @@ namespace NetworkUtil
             }
 
             return string.Join(":", str);
+        }
+
+        public string GetMacAddressByManagementObject()
+        {
+            ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_NetworkAdapterConfiguration where IPEnabled=true");
+            IEnumerable<ManagementObject> adapters = searcher.Get().Cast<ManagementObject>();
+            foreach (var adapter in adapters)
+            {
+                return adapter["MACAddress"].ToString();
+            }
+            return null;
+        }
+
+        public string GetMacAddressBySpeed()
+        {
+            const int MIN_MAC_ADDR_LENGTH = 12;
+            long maxSpeed = -1;
+
+            foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                {
+                    continue;
+                }
+
+                string macAddress = nic.GetPhysicalAddress().ToString();
+                if (nic.Speed > maxSpeed && !string.IsNullOrEmpty(macAddress) && macAddress.Length >= MIN_MAC_ADDR_LENGTH)
+                {
+                    return StringUtil.SplitInParts(macAddress, ":", 2);
+                }
+            }
+            return null;
         }
 
         public string GetMacAddressByUnicast(string url)
@@ -240,49 +237,52 @@ namespace NetworkUtil
             return null;
         }
 
-        public string GetSubnetMask(NetworkInterface networkInterface)
+        public void SetDns(string mac, string dns)
         {
-            foreach (UnicastIPAddressInformation ipAddressInformation in networkInterface.GetIPProperties().UnicastAddresses)
+            ManagementObject managementObject = GetManagementObject(mac);
+            if (managementObject == null)
             {
-                if (ipAddressInformation.Address.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    return ipAddressInformation.IPv4Mask.ToString();
-                }
+                return;
             }
-            return null;
+
+            ManagementBaseObject newDns = managementObject.GetMethodParameters("SetDNSServerSearchOrder");
+            newDns["DNSServerSearchOrder"] = dns.Split(',');
+            managementObject.InvokeMethod("SetDNSServerSearchOrder", newDns, null);
         }
 
-        public string GetDnsAddress(NetworkInterface networkInterface)
+        public void SetGateway(string mac, string gateway)
         {
-            foreach (IPAddress dnsAddress in networkInterface.GetIPProperties().DnsAddresses)
+            ManagementObject managementObject = GetManagementObject(mac);
+            if (managementObject == null)
             {
-                if (dnsAddress.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    return dnsAddress.ToString();
-                }
+                return;
             }
-            return null;
+
+            ManagementBaseObject newGateway = managementObject.GetMethodParameters("SetGateways");
+            newGateway["DefaultIPGateway"] = new string[] { gateway };
+            newGateway["GatewayCostMetric"] = new int[] { 1 };
+            managementObject.InvokeMethod("SetGateways", newGateway, null);
         }
 
-        public string GetGatewayAddress(NetworkInterface networkInterface)
+        public void SetIpAddress(string mac, string ipAddress, string subnetMask)
         {
-            foreach (GatewayIPAddressInformation gatewayAddress in networkInterface.GetIPProperties().GatewayAddresses)
+            ManagementObject managementObject = GetManagementObject(mac);
+            if (managementObject == null)
             {
-                return gatewayAddress.Address.ToString();
+                return;
             }
-            return null;
+
+            ManagementBaseObject newIP = managementObject.GetMethodParameters("EnableStatic");
+            newIP["IPAddress"] = new string[] { ipAddress };
+            newIP["SubnetMask"] = new string[] { subnetMask };
+            managementObject.InvokeMethod("EnableStatic", newIP, null);
         }
 
-        public string GetIpAddress(NetworkInterface networkInterface)
+        public void SetNetwork(string mac, string ipAddress, string subnetMask, string gateway, string dns)
         {
-            foreach (UnicastIPAddressInformation ipAddressInformation in networkInterface.GetIPProperties().UnicastAddresses)
-            {
-                if (ipAddressInformation.Address.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    return ipAddressInformation.Address.ToString();
-                }
-            }
-            return null;
+            SetIpAddress(mac, ipAddress, subnetMask);
+            SetGateway(mac, gateway);
+            SetDns(mac, dns);
         }
     }
 }
